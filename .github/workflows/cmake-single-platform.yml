@@ -1,0 +1,50 @@
+name: Build on Windows
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (for make / mingw tools)
+        uses: msys2/setup-msys2@v4
+        with:
+          update: true
+          install: >
+            mingw-w64-i686-gcc
+            mingw-w64-i686-g++ 
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-g++
+            make
+            cmake
+
+      - name: Ensure PATH includes MSYS2 mingw
+        shell: bash
+        run: |
+          echo "::add-path::C:/msys64/mingw32/bin"
+          echo "::add-path::C:/msys64/mingw64/bin"
+
+      - name: Run Windows build batch
+        shell: cmd
+        run: |
+          @echo off
+          cls
+          cmake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev zydis -B zydis
+          cmake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev zydis\dependencies\zycore -B zydis\dependencies\zycore
+          cmake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev -B CMake
+          make -C CMake -s
+
+      - name: Upload artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: CMake/**/*
