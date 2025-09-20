@@ -1,4 +1,4 @@
-name: Build on Windows
+name: Build on Windows (choco-only)
 
 on:
   push:
@@ -11,25 +11,17 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2 and install packages
-        uses: msys2/setup-msys2@v3
-        with:
-          update: true
-          install: >
-            mingw-w64-i686-gcc
-            mingw-w64-i686-g++
-            mingw-w64-i686-make
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-g++
-            mingw-w64-x86_64-make
-            cmake
-
-      - name: Add MSYS2 mingw32 to PATH
+      - name: Install toolchain and cmake via Chocolatey
+        shell: powershell
         run: |
-          echo "C:\msys64\mingw32\bin" >> $GITHUB_PATH
+          choco install -y mingw msys2 make cmake
+          Start-Sleep -Seconds 5
+
+      - name: Add mingw to PATH
+        run: echo "C:\tools\mingw64\bin" >> $GITHUB_PATH
 
       - name: Run Windows build batch
         shell: cmd
