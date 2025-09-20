@@ -1,4 +1,4 @@
-name: Build on Windows (choco-only)
+name: Build on Windows
 
 on:
   push:
@@ -11,29 +11,71 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install toolchain and cmake via Chocolatey
+      - name: Install required tools (Chocolatey)
         shell: powershell
         run: |
-          choco install -y mingw msys2 make cmake
+          choco install -y msys2 cmake --version=3.27.8
+          # If you prefer the latest CMake use: choco install -y cmake --pre
           Start-Sleep -Seconds 5
 
-      - name: Add mingw to PATH
-        run: echo "C:\tools\mingw64\bin" >> $GITHUB_PATH
-
-      - name: Run Windows build batch
-        shell: cmd
+      - name: Update MSYS2 and install MinGW toolchains
+        shell: bash
         run: |
-          @echo off
-          cls
-          cmake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev zydis -B zydis
-          cmake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev zydis\dependencies\zycore -B zydis\dependencies\zycore
-          cmake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev -B CMake
-          mingw32-make -C CMake -s
+          /c/msys64/usr/bin/pacman -Sy --noconfirm
+          /c/msys64/usr/bin/pacman -Su --noconfirm
+          /c/msys64/usr/bin/pacman -S --noconfirm mingw-w64-i686-toolchain mingw-w64-x86_64-toolchain mingw-w64-i686-make
 
-      - name: Upload artifacts
+      - name: Add mingw32 to PATH
+        run: echo "C:\msys64\mingw32\bin" >> $GITHUB_PATH
+
+      - name: Inspect tree (for debugging)
+        run: |
+          echo "PWD: $PWD"
+          dir /b /s
+
+      - name: Configure zydis (if present)
+        shell: bash
+        run: |
+          set -e
+          # Only configure if directory exists and contains CMakeLists.txt
+          if [ -f ./zydis/CMakeLists.txt ]; then
+            cmake -S zydis -B zydis -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev
+          else
+            echo "Skipping zydis configure: ./zydis/CMakeLists.txt not found"
+          fi
+
+      - name: Configure zycore (if present)
+        shell: bash
+        run: |
+          set -e
+          if [ -f ./zydis/dependencies/zycore/CMakeLists.txt ]; then
+            cmake -S zydis/dependencies/zycore -B zydis/dependencies/zycore -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev
+          else
+            echo "Skipping zycore configure: ./zydis/dependencies/zycore/CMakeLists.txt not found"
+          fi
+
+      - name: Configure project CMake (repo root)
+        shell: bash
+        run: |
+          set -e
+          # If your top-level CMakeLists requires a newer CMake policy, pass the policy variable or ensure installed CMake is new enough.
+          cmake -S . -B CMake -D CMAKE_C_COMPILER=i686-w64-mingw32-gcc -D CMAKE_CXX_COMPILER=i686-w64-mingw32-g++ -G "MinGW Makefiles" -Wno-dev -D CMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Build
+        shell: bash
+        run: |
+          set -e
+          if [ -f CMake/Makefile ]; then
+            mingw32-make -C CMake -s
+          else
+            echo "Build directory missing Makefile — skipping build"
+            exit 1
+          fi
+
+      - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
